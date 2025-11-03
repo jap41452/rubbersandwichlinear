@@ -1,0 +1,497 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Bonded Rubber — Axisymmetric Linear FE (cylinder / cones)</title>
+<style>
+  :root{--ink:#111;--muted:#555;--bd:#e5e5e5;--accent:#0b73c8;--bg:#fafafa;--r:12px;--pad:14px;--gap:14px}
+  *{box-sizing:border-box;font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif}
+  body{margin:0;background:var(--bg);color:var(--ink)}
+  header{padding:18px var(--pad) 6px;font-weight:600;font-size:18px}
+  main{display:grid;grid-template-columns:minmax(330px,360px) 1fr;gap:18px;padding:0 var(--pad) var(--pad)}
+  .card{background:#fff;border:1px solid var(--bd);border-radius:var(--r);padding:var(--pad)}
+  label{display:block;font-size:12px;color:var(--muted);margin:10px 0 6px}
+  input,select{width:100%;height:34px;padding:6px 10px;border:1px solid var(--bd);border-radius:10px;font-size:14px}
+  .row{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  button{height:36px;border:0;background:var(--accent);color:#fff;border-radius:999px;padding:0 14px;font-weight:600;cursor:pointer}
+  .kpi{font-size:13px;margin-top:8px}
+  canvas{display:block;width:100%;background:#fff;border:1px solid var(--bd);border-radius:12px}
+  input:disabled{background:#f5f7fa;color:#888;border-color:#e6e6e6}
+  #geom{height:240px}
+  #plot{height:360px;margin-top:12px}
+  .krow{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+  small{color:var(--muted)}
+  .sliderRow{display:grid;grid-template-columns:1fr 90px;gap:8px;align-items:center}
+  input[type=range]{height:34px}
+</style>
+</head>
+<body>
+<header>Axisymmetric Linear FE — Near‑Incompressible Rubber (1–5% ∆, cylinder / straight cone / curved cone)</header>
+<main>
+  <section class="card">
+    <div class="krow" style="margin-bottom:8px">
+      <button id="solveBtn">Solve Compression</button>
+      <span id="solveBadge" class="kpi">Ready.</span>
+    </div>
+
+    <label>Units</label>
+    <select id="units">
+      <option value="us">lbs & in</option>
+      <option value="si">N & mm</option>
+    </select>
+
+    <div class="row">
+      <div>
+        <label>Rubber Shear Modulus G</label>
+        <input id="G" type="number" step="any" value="120">
+      </div>
+      <div>
+        <label>Bulk Modulus K</label>
+        <input id="K" type="number" step="any" value="180000">
+      </div>
+    </div>
+
+    <div class="row">
+      <div>
+        <label>Geometry</label>
+        <select id="geomType">
+          <option value="cyl">Cylinder</option>
+          <option value="cone">Straight cone (t may vary)</option>
+          <option value="curved">Curved cone (t may vary)</option>
+        </select>
+      </div>
+      <div></div>
+    </div>
+
+    <div class="row">
+      <div>
+        <label>Part OD @ z=0</label>
+        <input id="OD0" type="number" step="any" value="4">
+      </div>
+      <div>
+        <label>Part OD @ z=H</label>
+        <input id="OD1" type="number" step="any" value="4">
+      </div>
+    </div>
+
+    <div class="row">
+      <div>
+        <label>Part ID @ z=0</label>
+        <input id="ID0" type="number" step="any" value="0.5">
+      </div>
+      <div>
+        <label>Part ID @ z=H</label>
+        <input id="ID1" type="number" step="any" value="0.5">
+      </div>
+    </div>
+
+    <div class="row">
+      <div class="krow" style="gap:8px;align-items:center">
+        <input id="isHollow" type="checkbox" checked>
+        <label for="isHollow" style="margin:0">Inner hole present (ID > 0)</label>
+      </div>
+      <div></div>
+    </div>
+
+    <div class="row">
+      <div>
+        <label>Outer curvature k_out (curved)</label>
+        <div class="sliderRow">
+          <input id="koutSlider" type="range" min="-1" max="1" step="0.01" value="0">
+          <input id="kout" type="number" step="any" value="0">
+        </div>
+      </div>
+      <div>
+        <label>Inner curvature k_in (curved)</label>
+        <div class="sliderRow">
+          <input id="kinSlider" type="range" min="-1" max="1" step="0.01" value="0">
+          <input id="kin" type="number" step="any" value="0">
+        </div>
+      </div>
+    </div>
+
+    <div class="row">
+      <div>
+        <label>Part Height H</label>
+        <input id="H" type="number" step="any" value="0.5">
+      </div>
+      <div>
+        <label>Imposed ∆ (top uz = −∆)</label>
+        <input id="disp" type="number" step="any" value="0.01">
+      </div>
+    </div>
+
+    <div class="row">
+      <div>
+        <label>Mesh nr (radial)</label>
+        <input id="nr" type="number" step="1" value="24">
+      </div>
+      <div>
+        <label>Mesh nz (axial)</label>
+        <input id="nz" type="number" step="1" value="8">
+      </div>
+    </div>
+
+    <div class="row">
+      <div>
+        <label>Radial BC (top & bottom)</label>
+        <select id="urMode">
+          <option value="fix" selected>ur = 0 at z=0 & z=H (default)</option>
+          <option value="free">ur free at z=0 & z=H</option>
+        </select>
+        <small>Axis symmetry still enforces ur = 0 on r = 0 (when ID = 0).</small>
+      </div>
+      <div></div>
+    </div>
+
+    <div class="row">
+      <div>
+        <label>Deflection scale (visual)</label>
+        <div class="sliderRow">
+          <input id="scaleSlider" type="range" min="0" max="50" step="0.5" value="10">
+          <input id="scale" type="number" step="any" value="10">
+        </div>
+      </div>
+      <div>
+        <label>Poisson ν (from G & K)</label>
+        <input id="nuBox" type="text" value="—" disabled>
+      </div>
+    </div>
+
+    <div class="kpi" id="kpi">—</div>
+  </section>
+
+  <section class="card">
+    <div>
+      <div style="font-weight:600;margin-bottom:6px">Geometry preview (r–z) with mesh</div>
+      <canvas id="geom"></canvas>
+      <div style="font-weight:600;margin:14px 0 6px">Deformed shape (scaled)</div>
+      <canvas id="plot"></canvas>
+      <div id="legend" style="font-size:12px;margin-top:8px;color:#333;text-align:center"></div>
+    </div>
+  </section>
+</main>
+
+<script>
+(function(){
+  // ---------- helpers ----------
+  const $ = id=>document.getElementById(id);
+  const must=id=>{const el=$(id);if(!el)throw Error('#'+id+' missing');return el;};
+  const gauss2=[-1/Math.SQRT2, 1/Math.SQRT2];
+
+  // cache last solution for interactive scale
+  let lastMesh=null,lastU=null,lastShearMin=0,lastShearMax=0;
+
+  // material from G & K
+  function matFromGK(G,K){ return {mu:G, lambda: K - 2*G/3}; }
+  function nuFromGK(G,K){ return (3*K-2*G)/(2*(3*K+G)); }
+
+  // shape functions for Q4
+  function shapeQ4(xi,eta){
+    const N=[0.25*(1-xi)*(1-eta), 0.25*(1+xi)*(1-eta), 0.25*(1+xi)*(1+eta), 0.25*(1-xi)*(1+eta)];
+    const dNdxi=[-0.25*(1-eta), 0.25*(1-eta), 0.25*(1+eta), -0.25*(1+eta)];
+    const dNdeta=[-0.25*(1-xi), -0.25*(1+xi), 0.25*(1+xi), 0.25*(1-xi)];
+    return {N,dNdxi,dNdeta};
+  }
+
+  // geometry profiles
+  function lerp(a,b,t){ return a+(b-a)*t; }
+  function roFunc(z,H,OD0,OD1,k){ const r0=OD0/2, r1=OD1/2; const t=H>0?z/H:0; if(Math.abs(k)>0){ const mid = lerp(r0,r1,t); const bulge = k*(t*(1-t)); return mid + bulge*(r0||1);} return lerp(r0,r1,t); }
+  function riFunc(z,H,ID0,ID1,k){ const r0=ID0/2, r1=ID1/2; const t=H>0?z/H:0; if(Math.abs(k)>0){ const mid=lerp(r0,r1,t); const bulge=k*(t*(1-t)); return mid + bulge*(r0||1);} return lerp(r0,r1,t); }
+
+  function buildMeshProfiles(params){
+    const {nr,nz,H,OD0,OD1,ID0,ID1,geomType,kout,kin,isHollow}=params;
+    const nodes=[]; const conn=[]; const cols=nr+1;
+    for(let j=0;j<=nz;j++){
+      const z=H*(j/nz);
+      const useKout = (geomType === 'curved') ? +kout : 0;
+      const useKin  = (geomType === 'curved') ? +kin  : 0;
+      const ro = roFunc(z,H,OD0,OD1, useKout);
+      let riIn = isHollow ? riFunc(z,H,ID0,ID1, useKin) : 0;
+      riIn = Math.max(0, Math.min(riIn, ro));
+      const width = Math.max(ro-riIn, 1e-9);
+      for(let i=0;i<=nr;i++){
+        const r = riIn + width*(i/nr);
+        nodes.push({r,z});
+      }
+    }
+    for(let j=0;j<nz;j++){
+      for(let i=0;i<nr;i++){
+        const n0=j*cols+i, n1=n0+1, n3=(j+1)*cols+i, n2=n3+1; // ccw quad
+        conn.push([n0,n1,n2,n3]);
+      }
+    }
+    return {nodes,conn,nr,nz};
+  }
+
+  // ----- Selective reduced integration to avoid volumetric locking -----
+  function assemble(mesh, mat){
+    const n=mesh.nodes.length, ndof=2*n; const K=new Float64Array(ndof*ndof);
+    const {mu,lambda}=mat;
+
+    // Helper to accumulate to global
+    function addKeToK(Ke,e){
+      const id=[2*e[0],2*e[0]+1,2*e[1],2*e[1]+1,2*e[2],2*e[2]+1,2*e[3],2*e[3]+1];
+      for(let a=0;a<8;a++) for(let b=0;b<8;b++) K[id[a]*ndof+id[b]]+=Ke[a*8+b];
+    }
+
+    for(const e of mesh.conn){
+      const i0=e[0],i1=e[1],i2=e[2],i3=e[3];
+      const r=[mesh.nodes[i0].r, mesh.nodes[i1].r, mesh.nodes[i2].r, mesh.nodes[i3].r];
+      const z=[mesh.nodes[i0].z, mesh.nodes[i1].z, mesh.nodes[i2].z, mesh.nodes[i3].z];
+
+      // (1) Deviatoric part with 2x2 Gauss, lambda=0
+      const Ke_dev=new Float64Array(64);
+      for(const xi of gauss2){
+        for(const eta of gauss2){
+          const {N,dNdxi,dNdeta}=shapeQ4(xi,eta);
+          let Jr=0,Jz=0,Kr=0,Kz=0, rbar=0;
+          for(let i=0;i<4;i++){ Jr+=dNdxi[i]*r[i]; Jz+=dNdxi[i]*z[i]; Kr+=dNdeta[i]*r[i]; Kz+=dNdeta[i]*z[i]; rbar+=N[i]*r[i]; }
+          const det=Jr*Kz - Jz*Kr; if(!(det>0)) continue; const inv=1/det;
+          const dNdr=new Array(4), dNdz=new Array(4);
+          for(let i=0;i<4;i++){ dNdr[i]=(dNdxi[i]*Kz - dNdeta[i]*Jz)*inv; dNdz[i]=(-dNdxi[i]*Kr + dNdeta[i]*Jr)*inv; }
+          const ri = Math.max(rbar,1e-8);
+          const B=[new Float64Array(8),new Float64Array(8),new Float64Array(8),new Float64Array(8)];
+          for(let i=0;i<4;i++){
+            const ur=2*i, uz=2*i+1;
+            B[0][ur]=dNdr[i];             // ε_r
+            B[1][uz]=dNdz[i];             // ε_z
+            B[2][ur]=N[i]/ri;             // ε_θ
+            B[3][ur]=dNdz[i]; B[3][uz]=dNdr[i]; // γ_rz
+          }
+          const weight = det*2*Math.PI*ri;
+          // D_dev: lambda=0, only 2μ part
+          const Ddev=[
+            [2*mu,     0,     0,   0],
+            [  0,   2*mu,    0,   0],
+            [  0,     0,  2*mu,  0],
+            [  0,     0,    0,   mu]
+          ];
+          const DB=[new Float64Array(8),new Float64Array(8),new Float64Array(8),new Float64Array(8)];
+          for(let i=0;i<4;i++) for(let j=0;j<4;j++){ const Dij=Ddev[i][j]; if(!Dij) continue; for(let k=0;k<8;k++) DB[i][k]+=Dij*B[j][k]; }
+          for(let a=0;a<8;a++) for(let b=0;b<8;b++){
+            let s=0; for(let i=0;i<4;i++) s+=B[i][a]*DB[i][b];
+            Ke_dev[a*8+b]+=s*weight;
+          }
+        }
+      }
+
+      // (2) Volumetric part with 1-point at center (xi=0,eta=0)
+      const Ke_vol=new Float64Array(64);
+      {
+        const xi=0, eta=0; const {N,dNdxi,dNdeta}=shapeQ4(xi,eta);
+        let Jr=0,Jz=0,Kr=0,Kz=0, rbar=0;
+        for(let i=0;i<4;i++){ Jr+=dNdxi[i]*r[i]; Jz+=dNdxi[i]*z[i]; Kr+=dNdeta[i]*r[i]; Kz+=dNdeta[i]*z[i]; rbar+=N[i]*r[i]; }
+        const det=Jr*Kz - Jz*Kr; if(det>0){
+          const inv=1/det; const dNdr=new Array(4), dNdz=new Array(4);
+          for(let i=0;i<4;i++){ dNdr[i]=(dNdxi[i]*Kz - dNdeta[i]*Jz)*inv; dNdz[i]=(-dNdxi[i]*Kr + dNdeta[i]*Jr)*inv; }
+          const ri=Math.max(rbar,1e-8);
+          // Build volumetric operator V (maps dofs-> ε_vol)
+          const V=new Float64Array(8);
+          for(let i=0;i<4;i++){
+            V[2*i]   += dNdr[i] + N[i]/ri; // ur contributes to ε_r and ε_θ
+            V[2*i+1] += dNdz[i];          // uz contributes to ε_z
+          }
+          const weight = det*2*Math.PI*ri; // axisymmetric volume
+          for(let a=0;a<8;a++) for(let b=0;b<8;b++) Ke_vol[a*8+b] += lambda * V[a]*V[b] * weight;
+        }
+      }
+
+      // Add to global
+      const Ke=new Float64Array(64); for(let i=0;i<64;i++) Ke[i]=Ke_dev[i]+Ke_vol[i];
+      addKeToK(Ke,e);
+    }
+    return K;
+  }
+
+  // shear eval for contours
+  function evalShear(mesh,e,xi,eta,u){
+    const i0=e[0],i1=e[1],i2=e[2],i3=e[3];
+    const r=[mesh.nodes[i0].r, mesh.nodes[i1].r, mesh.nodes[i2].r, mesh.nodes[i3].r];
+    const z=[mesh.nodes[i0].z, mesh.nodes[i1].z, mesh.nodes[i2].z, mesh.nodes[i3].z];
+    const {N,dNdxi,dNdeta}=shapeQ4(xi,eta);
+    let Jr=0,Jz=0,Kr=0,Kz=0; for(let i=0;i<4;i++){ Jr+=dNdxi[i]*r[i]; Jz+=dNdxi[i]*z[i]; Kr+=dNdeta[i]*r[i]; Kz+=dNdeta[i]*z[i]; }
+    const det=Jr*Kz - Jz*Kr; if(!(det>0)) return 0; const inv=1/det;
+    const dNdr=new Array(4), dNdz=new Array(4);
+    for(let i=0;i<4;i++){ dNdr[i]=(dNdxi[i]*Kz - dNdeta[i]*Jz)*inv; dNdz[i]=(-dNdxi[i]*Kr + dNdeta[i]*Jr)*inv; }
+    let g=0; for(let a=0;a<4;a++){ const ur=u[2*e[a]], uz=u[2*e[a]+1]; g += dNdz[a]*ur + dNdr[a]*uz; }
+    return g;
+  }
+
+  // color map and legend
+  function clamp(v,a,b){ return Math.min(b,Math.max(a,v)); }
+  function colorMapBlueRed(t){ t=clamp(t,0,1); const r=Math.floor(255*t), b=Math.floor(255*(1-t)); return `rgb(${r},0,${b})`; }
+  function updateLegend(){ const leg=$('legend'); leg.innerHTML=`γ<sub>rz</sub> min=${lastShearMin.toExponential(3)} max=${lastShearMax.toExponential(3)}<br><div style='background:linear-gradient(to right,blue,red);height:10px;margin:4px 0;border-radius:5px'></div>`; }
+
+  // preview (axes + mesh)
+  function drawPreview(){
+    const c=must('geom'); const ctx=c.getContext('2d');
+    const w=c.clientWidth|0, h=c.clientHeight|0; if(c.width!==w) c.width=w; if(c.height!==h) c.height=h; ctx.clearRect(0,0,w,h);
+    const H=+$('H').value||0.5, OD0=+$('OD0').value||4, OD1=+$('OD1').value||4, ID0=+$('ID0').value||0, ID1=+$('ID1').value||0.5; const type=$('geomType').value; const kout=+$('kout').value||0, kin=+$('kin').value||0;
+    const nr=Math.max(2, +$('nr').value|0), nz=Math.max(2, +$('nz').value|0);
+    const params={nr,nz,H,OD0,OD1,ID0,ID1,geomType:type,kout,kin,isHollow: $('isHollow').checked};
+    const mesh=buildMeshProfiles(params);
+    let rmax=-Infinity; for(const n of mesh.nodes){ if(n.r>rmax) rmax=n.r; }
+    const pad=16; const sx=(w-2*pad)/Math.max(rmax,1e-9), sz=(h-2*pad)/Math.max(H,1e-9); const s=Math.min(sx,sz);
+    ctx.save(); ctx.translate(pad,h-pad); ctx.scale(1,-1);
+    // axes
+    ctx.strokeStyle='#999'; ctx.lineWidth=0.8; ctx.beginPath(); ctx.moveTo(0,0); ctx.lineTo(rmax*s,0); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(0,0); ctx.lineTo(0,H*s); ctx.stroke();
+    // labels upright
+    ctx.save(); ctx.scale(1,-1); ctx.fillStyle='#333'; ctx.font='12px Inter,system-ui,sans-serif'; ctx.fillText('r', Math.max(rmax*s-10, 6), -12); ctx.fillText('z', 6, -(H*s-6)); ctx.restore();
+    // mesh
+    ctx.strokeStyle='#6875f5'; ctx.lineWidth=0.6; ctx.globalAlpha=0.9;
+    for(const e of mesh.conn){ const ids=[e[0],e[1],e[2],e[3],e[0]]; ctx.beginPath(); for(let k=0;k<ids.length;k++){ const i=ids[k]; const n=mesh.nodes[i]; const x=n.r*s, y=n.z*s; if(k===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);} ctx.stroke(); }
+    ctx.globalAlpha=1;
+    ctx.restore();
+  }
+
+  // solve and plot
+  function solve(){
+    try{
+      const G=+$('G').value||120, Kbulk=+$('K').value||180000; const H=+$('H').value||0.5; const disp=+$('disp').value||0.01;
+      const nr=Math.max(2, +$('nr').value|0), nz=Math.max(2, +$('nz').value|0);
+      const params={nr,nz,H, OD0:+$('OD0').value||4, OD1:+$('OD1').value||4, ID0:+$('ID0').value||0, ID1:+$('ID1').value||0.5, geomType:$('geomType').value, kout:+$('kout').value||0, kin:+$('kin').value||0, isHollow:$('isHollow').checked};
+      const mesh=buildMeshProfiles(params);
+      const mat=matFromGK(G,Kbulk); $('nuBox').value=nuFromGK(G,Kbulk).toFixed(6);
+
+      const K = assemble(mesh,mat);
+      const ndof=2*mesh.nodes.length; const u=new Float64Array(ndof);
+
+      // boundary conditions
+      const fixURTopBottom = ($('urMode').value === 'fix');
+      const fixed=[], val=[]; const add=(d,v)=>{const idx=fixed.indexOf(d); if(idx<0){fixed.push(d); val.push(v);} };
+      const eps=1e-12;
+      for(let i=0;i<mesh.nodes.length;i++){
+        const {r,z}=mesh.nodes[i];
+        if(Math.abs(r) < eps) add(2*i, 0);          // Axis symmetry: ur = 0 at r = 0
+        if(Math.abs(z) < eps){                      // Bottom surface
+          if(fixURTopBottom) add(2*i, 0);           // optional ur = 0
+          add(2*i+1, 0);                            // uz = 0
+        }
+        if(Math.abs(z - H) < eps){                  // Top surface
+          if(fixURTopBottom) add(2*i, 0);           // optional ur = 0
+          add(2*i+1, -disp);                        // imposed uz
+        }
+      }
+
+      // reduce and solve
+      const isFix=new Uint8Array(ndof); for(const d of fixed) isFix[d]=1; const map=new Int32Array(ndof).fill(-1); let nU=0; for(let i=0;i<ndof;i++) if(!isFix[i]) map[i]=nU++;
+      const KU=new Float64Array(nU*nU), rhs=new Float64Array(nU);
+      const valOf = d => { const k=fixed.indexOf(d); return k>=0?val[k]:0; };
+      for(let i=0;i<ndof;i++) for(let j=0;j<ndof;j++){
+        const kij=K[i*ndof+j];
+        if(!isFix[i]&&!isFix[j]) KU[map[i]*nU+map[j]]+=kij;
+        else if(!isFix[i]&&isFix[j]) rhs[map[i]]-=kij*valOf(j);
+      }
+      function cholSolve(A,b,n){
+        for(let i=0;i<n;i++) A[i*n+i]+=1e-12; // tiny regularization
+        const L=new Float64Array(n*n);
+        for(let i=0;i<n;i++){
+          for(let j=0;j<=i;j++){
+            let s=A[i*n+j]; for(let k=0;k<j;k++) s-=L[i*n+k]*L[j*n+k];
+            if(i===j) L[i*n+i]=Math.sqrt(Math.max(s,1e-18)); else L[i*n+j]=s/L[j*n+j];
+          }
+        }
+        const y=new Float64Array(n); for(let i=0;i<n;i++){ let s=b[i]; for(let k=0;k<i;k++) s-=L[i*n+k]*y[k]; y[i]=s/L[i*n+i]; }
+        const x=new Float64Array(n); for(let i=n-1;i>=0;i--){ let s=y[i]; for(let k=i+1;k<n;k++) s-=L[k*n+i]*x[k]; x[i]=s/L[i*n+i]; }
+        return x;
+      }
+      const uU=cholSolve(KU,rhs,nU); for(let i=0;i<ndof;i++) u[i]=isFix[i]?valOf(i):uU[map[i]];
+
+      // reactions & global stiffness
+      const R=new Float64Array(ndof); for(let i=0;i<ndof;i++){ let s=0; for(let j=0;j<ndof;j++) s+=K[i*ndof+j]*u[j]; R[i]=s; }
+      let F=0; for(let i=0;i<mesh.nodes.length;i++){ if(Math.abs(mesh.nodes[i].z-H)<1e-12) F += -R[2*i+1]; }
+      const k=F/disp; $('kpi').textContent=`k = ${k.toExponential(4)} (force/disp)`; $('solveBadge').textContent='Solved.';
+
+      // cache & draw
+      lastMesh=mesh; lastU=u;
+      const sc= +$('scale').value || +$('scaleSlider').value || 10; $('scaleSlider').value=sc; $('scale').value=sc;
+      drawDeformed(mesh,u,sc);
+    }catch(err){ $('solveBadge').textContent='Error'; console.error(err); }
+  }
+
+  function drawShearContours(ctx, mesh, u, scale, rmin,zmin,s){
+    let vmin=Infinity,vmax=-Infinity; const su=10, sv=6;
+    for(const e of mesh.conn){ for(let iu=0; iu<=su; iu++){ const xi=-1+2*(iu/su); for(let iv=0; iv<=sv; iv++){ const eta=-1+2*(iv/sv); const v=evalShear(mesh,e,xi,eta,u); if(v<vmin)vmin=v; if(v>vmax)vmax=v; } } }
+    if(!isFinite(vmin)||!isFinite(vmax)||Math.abs(vmax-vmin)<1e-20){ vmin=0; vmax=1e-12; }
+    lastShearMin=vmin; lastShearMax=vmax;
+    for(const e of mesh.conn){
+      const i0=e[0],i1=e[1],i2=e[2],i3=e[3];
+      const R=[mesh.nodes[i0].r+scale*u[2*i0], mesh.nodes[i1].r+scale*u[2*i1], mesh.nodes[i2].r+scale*u[2*i2], mesh.nodes[i3].r+scale*u[2*i3]];
+      const Z=[mesh.nodes[i0].z+scale*u[2*i0+1], mesh.nodes[i1].z+scale*u[2*i1+1], mesh.nodes[i2].z+scale*u[2*i2+1], mesh.nodes[i3].z+scale*u[2*i3+1]];
+      const pAt=(xi,eta)=>{ const {N}=shapeQ4(xi,eta); let rr=0,zz=0; for(let a=0;a<4;a++){ rr+=N[a]*R[a]; zz+=N[a]*Z[a]; } return [(rr-rmin)*s,(zz-zmin)*s]; };
+      for(let iu=0; iu<su; iu++){
+        const xi0=-1+2*(iu/su), xi1=-1+2*((iu+1)/su);
+        for(let iv=0; iv<sv; iv++){
+          const eta0=-1+2*(iv/sv), eta1=-1+2*((iv+1)/sv);
+          const v00=evalShear(mesh,e,xi0,eta0,u), v10=evalShear(mesh,e,xi1,eta0,u), v11=evalShear(mesh,e,xi1,eta1,u), v01=evalShear(mesh,e,xi0,eta1,u);
+          const vavg=0.25*(v00+v10+v11+v01); const t=(vavg-vmin)/(vmax-vmin);
+          const p00=pAt(xi0,eta0), p10=pAt(xi1,eta0), p11=pAt(xi1,eta1), p01=pAt(xi0,eta1);
+          const col = colorMapBlueRed(t); ctx.fillStyle=col; ctx.beginPath(); ctx.moveTo(p00[0],p00[1]); ctx.lineTo(p10[0],p10[1]); ctx.lineTo(p11[0],p11[1]); ctx.lineTo(p01[0],p01[1]); ctx.closePath(); ctx.fill();
+        }
+      }
+    }
+  }
+
+  function colorMapBlueRed(t){ t=Math.min(1,Math.max(0,t)); const r=Math.floor(255*t), b=Math.floor(255*(1-t)); return `rgb(${r},0,${b})`; }
+
+  function drawDeformed(mesh,u,scale){
+    const c=must('plot'); const ctx=c.getContext('2d'); const w=c.clientWidth|0, h=c.clientHeight|0; if(c.width!==w) c.width=w; if(c.height!==h) c.height=h; ctx.clearRect(0,0,w,h);
+    // bounds include original and deformed to keep same frame
+    let rmin=Infinity,rmax=-Infinity,zmin=Infinity,zmax=-Infinity;
+    for(let i=0;i<mesh.nodes.length;i++){
+      const n=mesh.nodes[i];
+      const rd=n.r + scale*u[2*i]; const zd=n.z + scale*u[2*i+1];
+      rmin=Math.min(rmin,n.r,rd); rmax=Math.max(rmax,n.r,rd);
+      zmin=Math.min(zmin,n.z,zd); zmax=Math.max(zmax,n.z,zd);
+    }
+    const pad=16; const sx=(w-2*pad)/Math.max(rmax-rmin,1e-9), sz=(h-2*pad)/Math.max(zmax-zmin,1e-9); const s=Math.min(sx,sz);
+    ctx.save(); ctx.translate(pad,h-pad); ctx.scale(1,-1);
+    // undeformed
+    ctx.strokeStyle='#c9c9c9'; ctx.lineWidth=0.8;
+    for(const e of mesh.conn){ const ids=[e[0],e[1],e[2],e[3],e[0]]; ctx.beginPath(); for(let k=0;k<ids.length;k++){ const i=ids[k]; const n=mesh.nodes[i]; const x=(n.r-rmin)*s, y=(n.z-zmin)*s; if(k===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);} ctx.stroke(); }
+
+    // shear contours on deformed geometry
+    drawShearContours(ctx, mesh, u, scale, rmin,zmin,s);
+
+    // deformed mesh overlay
+    ctx.strokeStyle='#111'; ctx.lineWidth=0.8;
+    for(const e of mesh.conn){ const ids=[e[0],e[1],e[2],e[3],e[0]]; ctx.beginPath(); for(let k=0;k<ids.length;k++){ const i=ids[k]; const n=mesh.nodes[i]; const x=(n.r+scale*u[2*i]-rmin)*s, y=(n.z+scale*u[2*i+1]-zmin)*s; if(k===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);} ctx.stroke(); }
+    ctx.restore();
+    updateLegend();
+  }
+
+  // UI logic: sliders, locks and events
+  function syncPair(slider, box){ const s=$(slider), b=$(box); if(!s||!b) return; const apply=()=>{ b.value=s.value; if(lastMesh&&lastU) drawDeformed(lastMesh,lastU,+s.value||0); }; const back=()=>{ s.value=b.value; if(lastMesh&&lastU) drawDeformed(lastMesh,lastU,+b.value||0); }; s.addEventListener('input', apply); b.addEventListener('input', back); }
+
+  function toggleKControls(){ const curved = $('geomType').value === 'curved'; ['kout','koutSlider','kin','kinSlider'].forEach(id=>{ const el=$(id); if(!el) return; el.disabled=!curved; el.style.opacity=curved?'1':'0.5'; }); }
+
+  function toggleGeomLocks(){
+    const type=$('geomType').value; const cyl=(type==='cyl');
+    ['OD1','ID1'].forEach(id=> { $(id).disabled = cyl; });
+    if(cyl){ $('OD1').value = $('OD0').value; $('ID1').value = $('ID0').value; }
+    const hollow = $('isHollow').checked; const id0=$('ID0'), id1=$('ID1');
+    if(!hollow){ if(!id0.dataset.prev) id0.dataset.prev=id0.value; if(!id1.dataset.prev) id1.dataset.prev=id1.value; id0.value=0; id1.value=0; } else { if(id0.dataset.prev){ id0.value=id0.dataset.prev; delete id0.dataset.prev; } if(id1.dataset.prev){ id1.value=id1.dataset.prev; delete id1.dataset.prev; } }
+    [id0,id1].forEach(el=>{ el.disabled=!hollow; el.style.opacity=hollow?'1':'0.6'; });
+  }
+
+  // hook up
+  $('solveBtn').addEventListener('click', solve);
+  ;['geomType','OD0','OD1','ID0','ID1','H','nr','nz','isHollow','kout','kin'].forEach(id=> $(id).addEventListener('input', ()=>{ toggleKControls(); toggleGeomLocks(); drawPreview(); }));
+  ;['koutSlider','kinSlider'].forEach((sid,i)=>{
+    const bid=i===0?'kout':'kin'; const s=$(sid), b=$(bid); if(!s||!b) return; s.addEventListener('input', ()=>{ b.value=s.value; drawPreview(); }); b.addEventListener('input', ()=>{ s.value=b.value; drawPreview(); });
+  });
+  syncPair('scaleSlider','scale');
+  window.addEventListener('resize', drawPreview);
+
+  // init
+  toggleKControls();
+  toggleGeomLocks();
+  $('nuBox').value = nuFromGK(+$('G').value||120, +$('K').value||180000).toFixed(6);
+  drawPreview();
+})();
+</script>
+</body>
+</html>
