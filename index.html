@@ -25,15 +25,29 @@
   .sliderRow{display:grid;grid-template-columns:1fr 90px;gap:8px;align-items:center}
   input[type=range]{height:34px}
 </style>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 </head>
+
 <body>
 <header>Axisymmetric Linear FE — Near‑Incompressible Rubber (cylinder / straight cone / curved cone)</header>
 <main>
   <section class="card">
-    <div class="krow" style="margin-bottom:8px">
-      <button id="solveBtn">Solve Compression</button>
-      <span id="solveBadge" class="kpi">Ready.</span>
-    </div>
+
+<div class="krow" style="margin-bottom:8px">
+  <button id="solveBtn">Solve Compression</button>
+  <span id="solveBadge" class="kpi">Ready.</span>
+</div>
+
+<div style="margin-top:8px;font-weight:600;font-size:13px;color:var(--muted)">Data Management</div>
+<div class="krow" style="margin-top:6px;gap:6px">
+  <button id="exportJsonBtn" style="background:#6b7280;font-size:12px;height:32px;padding:0 10px">Export JSON</button>
+  <button id="importJsonBtn" style="background:#6b7280;font-size:12px;height:32px;padding:0 10px">Import JSON</button>
+  <button id="exportCsvBtn" style="background:#6b7280;font-size:12px;height:32px;padding:0 10px">Export CSV</button>
+  <button id="exportPackageBtn" style="background:#6b7280;font-size:12px;height:32px;padding:0 10px">Export ZIP</button>
+</div>
+<input type="file" id="jsonFileInput" accept=".json" style="display:none;" />
+
+
 
     <label>Units</label>
     <select id="units">
@@ -491,6 +505,211 @@
   toggleGeomLocks();
   $('nuBox').value = nuFromGK(+$('G').value||120, +$('K').value||180000).toFixed(6);
   drawPreview();
+
+// ---------- Export/Import Functions ----------
+  function getTimestamp(){
+    const now = new Date();
+    return now.toISOString().replace(/[:.]/g, '-').slice(0, 19);
+  }
+
+  function exportJSON(){
+    const data = {
+      timestamp: new Date().toISOString(),
+      version: "1.0",
+      inputs: {
+        units: $('units').value,
+        G: +$('G').value,
+        K: +$('K').value,
+        geomType: $('geomType').value,
+        OD0: +$('OD0').value,
+        OD1: +$('OD1').value,
+        ID0: +$('ID0').value,
+        ID1: +$('ID1').value,
+        isHollow: $('isHollow').checked,
+        kout: +$('kout').value,
+        kin: +$('kin').value,
+        H: +$('H').value,
+        disp: +$('disp').value,
+        nr: +$('nr').value,
+        nz: +$('nz').value,
+        urMode: $('urMode').value,
+        scale: +$('scale').value
+      },
+      results: {
+        stiffness: $('kpi').textContent,
+        poisson: $('nuBox').value
+      }
+    };
+    
+    const blob = new Blob([JSON.stringify(data, null, 2)], {type: 'application/json'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `bonded-rubber-${getTimestamp()}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  function importJSON(file){
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const data = JSON.parse(e.target.result);
+        const inp = data.inputs;
+        
+        $('units').value = inp.units || 'us';
+        $('G').value = inp.G;
+        $('K').value = inp.K;
+        $('geomType').value = inp.geomType || 'cyl';
+        $('OD0').value = inp.OD0;
+        $('OD1').value = inp.OD1;
+        $('ID0').value = inp.ID0;
+        $('ID1').value = inp.ID1;
+        $('isHollow').checked = inp.isHollow !== undefined ? inp.isHollow : true;
+        $('kout').value = inp.kout || 0;
+        $('kin').value = inp.kin || 0;
+        $('koutSlider').value = inp.kout || 0;
+        $('kinSlider').value = inp.kin || 0;
+        $('H').value = inp.H;
+        $('disp').value = inp.disp;
+        $('nr').value = inp.nr;
+        $('nz').value = inp.nz;
+        $('urMode').value = inp.urMode || 'fix';
+        $('scale').value = inp.scale || 10;
+        $('scaleSlider').value = inp.scale || 10;
+        
+        toggleKControls();
+        toggleGeomLocks();
+        drawPreview();
+        
+        alert('Configuration imported successfully!');
+      } catch(err) {
+        alert('Error importing JSON: ' + err.message);
+      }
+    };
+    reader.readAsText(file);
+  }
+
+  function exportCSV(){
+    const rows = [
+      ['Bonded Rubber Axisymmetric FE - Results Summary'],
+      ['Timestamp', new Date().toISOString()],
+      [''],
+      ['Input Parameters'],
+      ['Units', $('units').value],
+      ['Shear Modulus G', $('G').value],
+      ['Bulk Modulus K', $('K').value],
+      ['Poisson ν', $('nuBox').value],
+      ['Geometry Type', $('geomType').value],
+      ['Part OD @ z=0', $('OD0').value],
+      ['Part OD @ z=H', $('OD1').value],
+      ['Part ID @ z=0', $('ID0').value],
+      ['Part ID @ z=H', $('ID1').value],
+      ['Inner hole present', $('isHollow').checked],
+      ['Outer curvature k_out', $('kout').value],
+      ['Inner curvature k_in', $('kin').value],
+      ['Part Height H', $('H').value],
+      ['Imposed Δ', $('disp').value],
+      ['Mesh nr (radial)', $('nr').value],
+      ['Mesh nz (axial)', $('nz').value],
+      ['Radial BC', $('urMode').value],
+      ['Deflection scale', $('scale').value],
+      [''],
+      ['Results'],
+      ['Stiffness', $('kpi').textContent]
+    ];
+    
+    const csvContent = rows.map(row => row.map(cell => {
+      const str = String(cell);
+      return str.includes(',') ? `"${str}"` : str;
+    }).join(',')).join('\n');
+    
+    const blob = new Blob([csvContent], {type: 'text/csv'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `bonded-rubber-results-${getTimestamp()}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  async function exportPackage(){
+    const timestamp = getTimestamp();
+    const zip = new JSZip();
+    
+    // Add CSV
+    const rows = [
+      ['Bonded Rubber Axisymmetric FE - Results Summary'],
+      ['Timestamp', new Date().toISOString()],
+      [''],
+      ['Input Parameters'],
+      ['Units', $('units').value],
+      ['Shear Modulus G', $('G').value],
+      ['Bulk Modulus K', $('K').value],
+      ['Poisson ν', $('nuBox').value],
+      ['Geometry Type', $('geomType').value],
+      ['Part OD @ z=0', $('OD0').value],
+      ['Part OD @ z=H', $('OD1').value],
+      ['Part ID @ z=0', $('ID0').value],
+      ['Part ID @ z=H', $('ID1').value],
+      ['Inner hole present', $('isHollow').checked],
+      ['Outer curvature k_out', $('kout').value],
+      ['Inner curvature k_in', $('kin').value],
+      ['Part Height H', $('H').value],
+      ['Imposed Δ', $('disp').value],
+      ['Mesh nr (radial)', $('nr').value],
+      ['Mesh nz (axial)', $('nz').value],
+      ['Radial BC', $('urMode').value],
+      ['Deflection scale', $('scale').value],
+      [''],
+      ['Results'],
+      ['Stiffness', $('kpi').textContent]
+    ];
+    
+    const csvContent = rows.map(row => row.map(cell => {
+      const str = String(cell);
+      return str.includes(',') ? `"${str}"` : str;
+    }).join(',')).join('\n');
+    
+    zip.file('results.csv', csvContent);
+    
+    // Add images
+    const canvases = [
+      {id: 'geom', name: 'geometry-preview.png'},
+      {id: 'plot', name: 'deformed-shape.png'}
+    ];
+    
+    for(const {id, name} of canvases){
+      const canvas = $(id);
+      const dataUrl = canvas.toDataURL('image/png');
+      const base64Data = dataUrl.split(',')[1];
+      zip.file(name, base64Data, {base64: true});
+    }
+    
+    // Generate and download
+    const blob = await zip.generateAsync({type: 'blob'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `bonded-rubber-package-${timestamp}.zip`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  // Wire up the export/import buttons
+  $('exportJsonBtn').addEventListener('click', exportJSON);
+  $('importJsonBtn').addEventListener('click', () => $('jsonFileInput').click());
+  $('jsonFileInput').addEventListener('change', (e) => {
+    if(e.target.files.length > 0){
+      importJSON(e.target.files[0]);
+      e.target.value = '';
+    }
+  });
+  $('exportCsvBtn').addEventListener('click', exportCSV);
+  $('exportPackageBtn').addEventListener('click', exportPackage);
+
+  // init
+
 })();
 </script>
 </body>
